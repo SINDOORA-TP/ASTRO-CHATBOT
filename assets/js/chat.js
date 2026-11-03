@@ -132,10 +132,13 @@
       try {
         const res = await fetch('data/parigaram_data.json');
         if (res.ok) {
-          parigaramList = await res.json();
+          const raw = await res.text();
+          if (!raw.trim().startsWith('<')) {
+            parigaramList = JSON.parse(raw);
+          }
         }
       } catch (err) {
-        console.warn('Could not load parigaram data:', err);
+        // static or offline fallback
       }
     }
     loadParigaramDatabase();
@@ -296,14 +299,56 @@
       targetDropdown.classList.remove('hidden');
     }
 
+    let citiesCache = null;
+    let citiesLoadingPromise = null;
+
+    async function loadCitiesDatabase() {
+      if (citiesCache && citiesCache.length > 0) return citiesCache;
+      if (citiesLoadingPromise) return citiesLoadingPromise;
+
+      citiesLoadingPromise = (async () => {
+        try {
+          const res = await fetch('data/cities.json');
+          if (res.ok) {
+            const raw = await res.text();
+            if (!raw.trim().startsWith('<')) {
+              citiesCache = JSON.parse(raw);
+              return citiesCache;
+            }
+          }
+        } catch (e) {
+          // fetch error
+        }
+        return [];
+      })();
+
+      return citiesLoadingPromise;
+    }
+    loadCitiesDatabase();
+
     async function searchCities(query) {
       if (!query || query.trim().length < 2) return [];
+      const q = query.trim().toLowerCase();
+
+      // 1. Instant client-side lookup from static JSON (works on GitHub Pages & PHP alike, 0ms latency)
+      const list = await loadCitiesDatabase();
+      if (list && list.length > 0) {
+        return list.filter((c) => {
+          const name = (c.name || '').toLowerCase();
+          const state = (c.state || '').toLowerCase();
+          const country = (c.country || '').toLowerCase();
+          return name.includes(q) || state.includes(q) || country.includes(q);
+        }).slice(0, 20);
+      }
+
+      // 2. Safe fallback to api/cities.php if running on dynamic PHP server
       try {
         const res = await fetch(`api/cities.php?q=${encodeURIComponent(query.trim())}`);
         if (!res.ok) return [];
-        return await res.json();
+        const raw = await res.text();
+        if (raw.trim().startsWith('<')) return [];
+        return JSON.parse(raw);
       } catch (e) {
-        console.warn('City lookup failed:', e);
         return [];
       }
     }
@@ -1071,7 +1116,7 @@
       `;
     }
 
-    /* ---------------- AI Question & Answer with Gemini Proxy ---------------- */
+    /* ---------------- AI Question & Answer with Gemini Proxy & Client Fallback ---------------- */
     async function sendToAI(question) {
       showTyping();
       userInput.disabled = true;
@@ -1084,12 +1129,15 @@
         topic = 'parigaram';
       } else if (qLower.includes('திருமணம்') || qLower.includes('கல்யாணம்') || qLower.includes('marriage') || qLower.includes('மனைவி') || qLower.includes('கணவர்')) {
         topic = 'marriage';
-      } else if (qLower.includes('வேலை') || qLower.includes('தொழில்') || qLower.includes('வியாபாரம்') || qLower.includes('career') || qLower.includes('job') || qLower.includes('business') || qLower.includes('திசை') || qLower.includes('வடக்கு') || qLower.includes('கிழக்கு')) {
+      } else if (qLower.includes('வேலை') || qLower.includes('தொழில்') || qLower.includes('வியாபாரம்') || qLower.includes('career') || qLower.includes('job') || qLower.includes('business') || qLower.includes('திசை') || qLower.includes('வடக்கு') || qLower.includes('கிழக்கு') || qLower.includes('தெற்கு') || qLower.includes('மேற்கு')) {
         topic = 'career';
       } else if (qLower.includes('உடல்நலம்') || qLower.includes('நோய்') || qLower.includes('ஆரோக்யம்') || qLower.includes('health')) {
         topic = 'health';
       }
 
+      let aiReply = null;
+
+      // 1. Try PHP Gemini Proxy (works on PHP server)
       try {
         const res = await fetch('api/gemini.php', {
           method: 'POST',
@@ -1101,25 +1149,152 @@
           })
         });
 
-        const data = await res.json();
-        hideTyping();
+        if (res.ok) {
+          const raw = await res.text();
+          if (!raw.trim().startsWith('<')) {
+            const data = JSON.parse(raw);
+            if (data && data.success && data.reply) {
+              aiReply = data.reply;
+            }
+          }
+        }
+      } catch (err) {
+        // Fallback gracefully without unhandled errors
+      }
 
-        if (res.ok && data.success) {
-          addMessage(formatBotReply(data.reply), 'bot', true);
+      // 2. Try Client-side Gemini API if key is present in localStorage or window
+      if (!aiReply) {
+        const clientKey = window.GEMINI_API_KEY || localStorage.getItem('gemini_api_key');
+        if (clientKey) {
+          try {
+            const prompt = `ஜாதகர் பெயர்: ${userData.name || 'அன்பர்'}\nலக்னம்: ${userData.chartData?.lagna?.sign || '-'}\nராசி: ${userData.chartData?.rasi?.sign || '-'}\nநட்சத்திரம்: ${userData.chartData?.nakshatra?.name || '-'}\nகேள்வி: ${question}\nதலைப்பு: ${topic}\nதயவுசெய்து தமிழ் மொழியில் விரிவான, மரியாதையான, நடைமுறைக்கேற்ற ஜோதிட வழிகாட்டலை வழங்கவும்.`;
+            const gRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${clientKey}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                generationConfig: { temperature: 0.6, maxOutputTokens: 2048 }
+              })
+            });
+            if (gRes.ok) {
+              const gData = await gRes.json();
+              const gText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
+              if (gText) aiReply = gText;
+            }
+          } catch (e) {
+            // fallback to client engine
+          }
+        }
+      }
+
+      // 3. Built-in Comprehensive Vedic Astrological Engine (works 100% offline & on GitHub Pages)
+      if (!aiReply) {
+        aiReply = generateVedicAstrologyGuidance(userData.chartData, question, topic, userData.name);
+      }
+
+      hideTyping();
+      addMessage(formatBotReply(aiReply), 'bot', true);
+
+      userInput.disabled = false;
+      sendBtn.disabled   = false;
+      userInput.focus();
+      currentState = STATES.AI_ANSWER;
+    }
+
+    /* ---------------- In-Depth Vedic Astrological Engine ---------------- */
+    function generateVedicAstrologyGuidance(chart, question, topic, userName) {
+      const name = userName || 'அன்பர்';
+      const lagna = chart?.lagna?.sign || 'மேஷம்';
+      const lagnaLord = chart?.lagna?.lord || 'செவ்வாய்';
+      const rasi = chart?.rasi?.sign || 'ரிஷபம்';
+      const rasiLord = chart?.rasi?.lord || 'சுக்கிரன்';
+      const nakshatra = chart?.nakshatra?.name || 'ரோகிணி';
+      const pada = chart?.nakshatra?.pada || '1';
+      const nakLord = chart?.nakshatra?.lord || 'சந்திரன்';
+      const sevvai = chart?.doshas?.sevvai?.present ? 'செவ்வாய் தோஷம் உள்ளது' : 'செவ்வாய் தோஷம் இல்லை';
+
+      // Find Nakshatra Parigaram details
+      const parigaram = findNakshatraParigaram(nakshatra);
+
+      let text = `வணக்கம் **${name}** அவர்களே! உங்கள் ஜாதகக் கணிப்புகளின் அடிப்படையிலான ஜோதிட வழிகாட்டல் இதோ:\n\n`;
+      text += `### 🌟 ஜாதக அடிப்படைக் கூறுகள்\n`;
+      text += `* **லக்னம்**: ${lagna} (அதிபதி: ${lagnaLord})\n`;
+      text += `* **ராசி**: ${rasi} (அதிபதி: ${rasiLord})\n`;
+      text += `* **நட்சத்திரம்**: ${nakshatra} (பாதம் ${pada}, அதிபதி: ${nakLord})\n`;
+      text += `* **செவ்வாய் தோஷம்**: ${sevvai}\n\n`;
+
+      if (topic === 'career') {
+        text += `### 💼 தொழில் மற்றும் உத்தியோக ஆய்வு (Career & Business Guidance)\n`;
+        text += `உங்கள் லக்னமான **${lagna}** மற்றும் ராசியான **${rasi}** அடிப்படையில், 10-ஆம் பாவகம் உங்களின் கர்ம ஸ்தானத்தைக் குறிக்கிறது.\n\n`;
+        text += `* **ஏற்ற தொழில் துறைகள்**: தகவல் தொழில்நுட்பம் (IT & Software), மேலாண்மை, வர்த்தகம், கல்வி, ஆலோசனை, நிதி மற்றும் மக்கள் தொடர்புத் துறைகளில் நீங்கள் விரைவான முன்னேற்றமும் புகழும் அடைய வாய்ப்புகள் பிரகாசமாக உள்ளன.\n`;
+        text += `* **சுய தொழில் / வியாபாரம்**: நீங்கள் சொந்தமாக தொழில் தொடங்க நினைத்தால், புதன் மற்றும் குருவின் ஆசி பெற்ற வியாபாரம், சேவைத் துறை (Service Sector) அல்லது தொழில்நுட்பத் துறையைத் தேர்ந்தெடுக்கலாம்.\n\n`;
+
+        text += `### 🧭 சாதகமான திசைகள் (Auspicious Directions Analysis)\n`;
+        text += `நீங்கள் குறிப்பிட்ட திசை சார்ந்த கேள்விக்கான ஆழமான ஜோதிட விளக்கம்:\n\n`;
+        text += `1. **வடக்கு திசை (North - புதன் பகவான்)**:\n`;
+        text += `   * புதன் அறிவு, வர்த்தகம், கணிதம் மற்றும் தகவல் தொடர்புக்கு அதிபதி.\n`;
+        text += `   * நீங்கள் தகவல் தொழில்நுட்பம் (IT), கம்ப்யூட்டர், மென்பொருள், ஆடிட்டிங், இணைய வர்த்தகம் அல்லது புத்திசாலித்தனமான வியாபாரம் தொடங்க வடக்கு திசை **மிகவும் சாதகமான வெற்றியைத் தரும்**.\n\n`;
+        text += `2. **கிழக்கு திசை (East - சூரிய பகவான் & குரு)**:\n`;
+        text += `   * சூரியன் ஆன்ம காரகன், அதிகாரத்திற்கும் தலைமைத்துவத்திற்கும் அதிபதி.\n`;
+        text += `   * அரசு சார்ந்த பணிகள், நிர்வாக தலைமைப் பதவிகள், கல்வி நிறுவனங்கள், மருத்துவத் துறை மற்றும் உயர்மட்ட வியாபாரக் கூட்டாண்மைகளுக்கு கிழக்கு திசை **மரியாதையையும் புகழையும் பெற்றுத்தரும்**.\n\n`;
+        text += `> **வழிகாட்டல் முடிவு**: உங்கள் லக்னம் மற்றும் ராசி பலத்தின்படி, வர்த்தகம் மற்றும் தொழில்நுட்ப வளர்ச்சிக்கு **வடக்கு திசையும்**, அதிகாரம் மற்றும் நிர்வாக வளர்ச்சிக்கு **கிழக்கு திசையும்** இரண்டும் யோகமானவை. ஆரம்ப கட்டத்தில் உங்கள் தற்போதைய இருப்பிடத்திலிருந்து **வடக்கு அல்லது வடகிழக்கு (ஈசானியம்)** நோக்கி அடியெடுத்து வைப்பது மிகச் சிறந்த சுப பலன்களை வழங்கும்.\n\n`;
+
+      } else if (topic === 'marriage') {
+        text += `### 💍 திருமணம் & தாம்பத்திய ஆய்வு (Marriage & Relationships)\n`;
+        text += `* **களத்திர ஸ்தானம் (7-ஆம் பாவம்)**: உங்கள் லக்னமான ${lagna}-க்குரிய 7-ஆம் அதிபதி மற்றும் களத்திர காரகன் சுக்கிரனின் அமைப்பு திருமண பந்தத்தை நிர்ணயிக்கிறது.\n`;
+        text += `* **தோஷ நிலை**: உங்கள் ஜாதகத்தில் **${sevvai}**. எனவே குடும்ப வாழ்க்கை சீராக அமைய பரஸ்பர புரிதலும் நல்ல பொருத்தமும் அவசியமாகும்.\n`;
+        text += `* **பொருத்தமான திசை**: உங்கள் பிறப்பிடத்திலிருந்து கிழக்கு அல்லது வடக்கு திசையில் இருந்து வரன் அமைய அதிக வாய்ப்புள்ளது.\n`;
+        text += `* **பரிகாரம்**: வெள்ளிக்கிழமைகளில் மகாலட்சுமி தாயாருக்கு நெய்தீபம் ஏற்றி வழிபட திருமணத் தடைகள் நீங்கி நல்வாழ்க்கை அமையும்.\n\n`;
+
+      } else if (topic === 'parigaram') {
+        text += `### 🪔 நட்சத்திர பரிகார ஸ்தலம் & வழிபாடு (Remedy & Temple)\n`;
+        if (parigaram) {
+          text += `உங்கள் ஜென்ம நட்சத்திரமான **${nakshatra}**-க்குரிய பரிகார விபரம்:\n\n`;
+          text += `* **பரிகாரத் திருத்தலம்**: ${parigaram.temple}\n`;
+          text += `* **அமைவிடம்**: ${parigaram.temple_place}\n`;
+          text += `* **மூலவர் & தெய்வம்**: ${parigaram.deity}\n`;
+          text += `* **தல விருட்சம்**: ${parigaram.maram}\n`;
+          text += `* **மிருகம் / பட்சி**: ${parigaram.mirugam} / ${parigaram.pakshi}\n`;
+          text += `* **தலச் சிறப்பு**: ${parigaram.temple_desc}\n\n`;
+          text += `* **வழிபாட்டு முறை**: ${parigaram.remedy}\n\n`;
+          if (parigaram.gayatri) {
+            text += `* **நட்சத்திர காயத்ரி மந்திரம்**:\n  _"${parigaram.gayatri}"_\n\n`;
+          }
         } else {
-          addMessage(data.error || 'மன்னிக்கவும், AI பதிலளிக்க இயலவில்லை. மீண்டும் முயற்சிக்கவும்.', 'bot');
+          text += `உங்கள் நட்சத்திர நாளான **${nakshatra}** அன்று அருகிலுள்ள சிவாலயம் அல்லது பெருமாள் கோவிலில் நெய் தீபம் ஏற்றி அர்ச்சனை செய்வது சகல தோஷங்களையும் நிவர்த்தி செய்யும்.\n\n`;
         }
 
-      } catch (err) {
-        hideTyping();
-        console.error('Gemini proxy error:', err);
-        addMessage('இணைப்பில் பிழை ஏற்பட்டது. தயவுசெய்து சிறிது நேரம் கழித்து முயற்சிக்கவும்.', 'bot');
-      } finally {
-        userInput.disabled = false;
-        sendBtn.disabled   = false;
-        userInput.focus();
-        currentState = STATES.AI_ANSWER;
+      } else {
+        text += `### 🔮 பொதுவான வாழ்க்கை வழிகாட்டல்\n`;
+        text += `* லக்னாதிபதி **${lagnaLord}** மற்றும் ராசிநாதன் **${rasiLord}** பலம் உங்கள் தனித்துவமான திறன்களையும் ஆற்றலையும் உயர்த்துகிறது.\n`;
+        text += `* உங்கள் அறிவாற்றலும் விடாமுயற்சியும் உங்களை எந்தவொரு கடினமான சூழ்நிலையிலும் வழிநடத்தும்.\n`;
+        text += `* முக்கியமான காரியங்களை உங்கள் ஜென்ம நட்சத்திர நாளிலும், சுப திதிகளிலும் தொடங்குவது தொடர் வெற்றியைத் தரும்.\n\n`;
       }
+
+      // Add Nakshatra Temple highlight if not already detailed in parigaram section
+      if (topic !== 'parigaram' && parigaram) {
+        text += `### ⛩️ ஜென்ம நட்சத்திர பரிகார ஸ்தலம்\n`;
+        text += `உங்கள் நட்சத்திரமான **${nakshatra}**-க்குரிய சிறப்புத் திருத்தலம்: **${parigaram.temple}** (${parigaram.temple_place}). இந்த தலத்தில் வழிபட சகல காரியத் தடைகளும் நீங்கி சுபிட்சம் பெருகும்.\n\n`;
+      }
+
+      text += `> ⚠️ **குறிப்பு**: இது ஒரு பொதுவான ஜோதிட வழிகாட்டல் மட்டுமே (Guidance Only). உங்கள் ஜாதகத்தை முழுமையாக ஆராய்ந்து நேரில் வழிகாட்டல் பெற கீழே உள்ள **Slot பதிவு செய்யுங்கள்** பொத்தானைப் பயன்படுத்தி ஆலோசனையை முன்பதிவு செய்யலாம்.`;
+
+      return text;
+    }
+
+    /* Helper: Find Parigaram for Nakshatra */
+    function findNakshatraParigaram(nakName) {
+      if (!nakName) return null;
+      const clean = nakName.trim().toLowerCase();
+      if (parigaramList && parigaramList.length > 0) {
+        const found = parigaramList.find(p => {
+          const nTa = (p.nakshatram || '').toLowerCase();
+          const nEn = (p.name_en || '').toLowerCase();
+          return clean.includes(nTa) || nTa.includes(clean) || clean.includes(nEn) || nEn.includes(clean);
+        });
+        if (found) return found;
+      }
+      return null;
     }
 
     /* ---------------- Format Bot Markdown Reply to HTML ---------------- */

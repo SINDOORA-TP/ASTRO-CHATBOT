@@ -18,7 +18,7 @@ if (file_exists(__DIR__ . '/config.local.php')) {
 if (!defined('GEMINI_API_KEY')) {
     define('GEMINI_API_KEY', getenv('GEMINI_API_KEY') ?: 'YOUR_GEMINI_API_KEY_HERE');
 }
-define('GEMINI_MODEL', 'gemini-3.5-flash');
+define('GEMINI_MODEL', 'gemini-2.5-flash');
 define('GEMINI_ENDPOINT', 'https://generativelanguage.googleapis.com/v1beta/models/' . GEMINI_MODEL . ':generateContent?key=' . GEMINI_API_KEY);
 
 // File uploads
