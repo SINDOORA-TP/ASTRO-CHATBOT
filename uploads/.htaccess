@@ -1,0 +1,7 @@
+# Deny direct browser access to uploads (only admin can view via PHP)
+Options -Indexes
+<Files "*.php">
+    Order allow,deny
+    Deny from all
+</Files>
+

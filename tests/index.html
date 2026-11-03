@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Chart Accuracy Test Harness</title>
+<style>
+  body { font-family: monospace; background: #1a0533; color: #e0d0ff; padding: 20px; }
+  h1 { color: #FFD700; }
+  .pass { color: #4ade80; font-weight: bold; }
+  .fail { color: #f87171; font-weight: bold; }
+  .warn { color: #facc15; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th, td { border: 1px solid #4a3080; padding: 6px 10px; text-align: left; font-size: 12px; }
+  th { background: #2d1b69; color: #facc15; }
+  .summary { margin-top: 20px; padding: 15px; background: #2d1b69; border-radius: 8px; }
+  pre { background: #120324; padding: 10px; border-radius: 4px; overflow-x: auto; font-size: 11px; }
+</style>
+</head>
+<body>
+<h1>🔭 Jothidam Chart Accuracy Tests (Phase 1 & 6)</h1>
+<p>Compare computed charts against hand-verified charts from your astrologer.</p>
+<div id="output"></div>
+
+<script src="../assets/js/astronomy.min.js"></script>
+<script src="../assets/js/chart.js"></script>
+<script src="../assets/js/dosha.js"></script>
+<script src="charts.test.js"></script>
+<script>
+async function runTests() {
+  const out = document.getElementById('output');
+  let passed = 0, failed = 0;
+
+  const testList = (typeof TEST_SUITE !== 'undefined' && TEST_SUITE.length) ? TEST_SUITE : [];
+
+  for (let i = 0; i < testList.length; i++) {
+    const tc = testList[i];
+    const div = document.createElement('div');
+    div.innerHTML = `<h3>Test ${i+1}: ${tc.name} (${tc.dob} ${tc.tob})</h3>`;
+
+    try {
+      const result = computeChart({
+        name: tc.name,
+        dob: tc.dob,
+        tob: tc.tob,
+        pob: tc.pob,
+        lat: tc.lat,
+        lon: tc.lon,
+        tzOffset: tc.tzOffset,
+        ayanamsaKind: 'lahiri'
+      });
+
+      const dosha = typeof analyzeDoshas === 'function' ? analyzeDoshas(result) : (typeof analyseDosha === 'function' ? analyseDosha(result) : null);
+      const rows = [];
+
+      // Check lagna sign
+      if (tc.expected.lagna_sign) {
+        const ok = result.lagna.sign === tc.expected.lagna_sign;
+        rows.push(['Lagna Sign', tc.expected.lagna_sign, result.lagna.sign, ok ? '✅ PASS' : '❌ FAIL']);
+        ok ? passed++ : failed++;
+      }
+
+      // Check rasi
+      if (tc.expected.rasi_sign) {
+        const ok = result.rasi.sign === tc.expected.rasi_sign;
+        rows.push(['Rasi (Moon Sign)', tc.expected.rasi_sign, result.rasi.sign, ok ? '✅ PASS' : '❌ FAIL']);
+        ok ? passed++ : failed++;
+      }
+
+      // Check nakshatra
+      if (tc.expected.nakshatra) {
+        const actualNak = result.rasi.nakshatra || result.lagna.nakshatra;
+        const ok = actualNak === tc.expected.nakshatra;
+        rows.push(['Moon Nakshatra', tc.expected.nakshatra, actualNak, ok ? '✅ PASS' : '❌ FAIL']);
+        ok ? passed++ : failed++;
+      }
+
+      const table = `<table>
+        <tr><th>Check</th><th>Expected</th><th>Computed</th><th>Result</th></tr>
+        ${rows.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td class="${r[3].includes('PASS') ? 'pass' : 'fail'}">${r[3]}</td></tr>`).join('')}
+      </table>`;
+      div.innerHTML += table;
+
+      // Show Dosha summary
+      if (dosha) {
+        div.innerHTML += `<p><strong>Dosha & Yogam Detected:</strong> Sevvai: ${dosha.sevvai_dosha?.present ? 'ஆம்' : 'இல்லை'}, Naga: ${dosha.naga_dosha?.present ? 'ஆம்' : 'இல்லை'}, Gajakesari: ${dosha.gajakesari_yoga?.present || dosha.gajakesari?.present ? 'ஆம்' : 'இல்லை'}</p>`;
+      }
+
+      div.innerHTML += `<details><summary>Full Computed Chart JSON</summary><pre>${JSON.stringify(result, null, 2)}</pre></details>`;
+
+    } catch (err) {
+      div.innerHTML += `<p class="fail">❌ ERROR: ${err.message}</p>`;
+      failed++;
+    }
+
+    out.appendChild(div);
+  }
+
+  // Summary
+  const s = document.createElement('div');
+  s.className = 'summary';
+  s.innerHTML = `
+    <h2>Test Summary</h2>
+    <p class="pass">✅ Passed: ${passed}</p>
+    <p class="fail">❌ Failed: ${failed}</p>
+    <p>Total checks run: ${passed + failed}</p>
+  `;
+  out.appendChild(s);
+}
+
+window.addEventListener('load', () => {
+  if (typeof computeChart === 'undefined') {
+    document.getElementById('output').innerHTML =
+      '<p class="fail">❌ computeChart is not loaded. Verify astronomy.min.js and chart.js paths.</p>';
+    return;
+  }
+  runTests();
+});
+</script>
+</body>
+</html>

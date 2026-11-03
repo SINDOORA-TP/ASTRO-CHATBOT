@@ -1,0 +1,12 @@
+# Deny all direct web access to config files
+<Files "config.php">
+    Order allow,deny
+    Deny from all
+</Files>
+<Files "prompts.php">
+    Order allow,deny
+    Deny from all
+</Files>
+# PHP errors off in production
+php_flag display_errors off
+

@@ -1,0 +1,16 @@
+# Local database files
+data/*.sqlite
+data/*.sqlite-wal
+data/*.sqlite-shm
+
+# Local credentials override (keeps API keys secure from Git)
+api/config.local.php
+
+# Uploaded payment files
+uploads/payments/*
+!uploads/payments/.gitkeep
+
+# System files
+.DS_Store
+Thumbs.db
+*.log

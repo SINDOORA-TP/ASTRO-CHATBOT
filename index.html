@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="ta">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a0533">
+  <title>ஜோதிடம் - AI Chatbot & ஜாதகக் கட்டம்</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⭐</text></svg>">
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+
+<body>
+
+  <!-- Sparkle particle container -->
+  <div class="sparkle-container" id="sparkleContainer"></div>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-inner">
+      <h1 class="shimmer-title">⭐ ஜோதிட AI ⭐</h1>
+      <p class="subtitle">உங்கள் ஜாதகம் - நேரடி ராசி கட்டம் & Gemini AI வழிகாட்டல்</p>
+    </div>
+
+    <!-- Mobile Navigation Tabs (visible on screens <= 992px) -->
+    <nav class="mobile-tabs" id="mobileTabs" aria-label="Mobile Navigation">
+      <button type="button" class="tab-btn" data-target="inputPanel">📝 விவரங்கள்</button>
+      <button type="button" class="tab-btn active" data-target="chatPanel">💬 உரையாடல்</button>
+      <button type="button" class="tab-btn" data-target="kattamPanel">🪐 ராசி கட்டம்</button>
+    </nav>
+  </header>
+
+  <!-- 3-Panel Dashboard Layout -->
+  <main class="astro-dashboard-layout">
+
+    <!-- ========================================================
+         LEFT PANEL: Data Input Screen (ஜாதக விவரங்கள் உள்ளீடு)
+         ======================================================== -->
+    <aside class="dashboard-panel left-panel" id="inputPanel">
+      <div class="panel-header">
+        <h2>📝 ஜாதக விவரங்கள்</h2>
+        <span class="panel-sub">Birth Details Input</span>
+      </div>
+
+      <form id="leftInputForm" class="left-form" autocomplete="off" onsubmit="return false;">
+        <div class="form-field">
+          <label for="lpName">பெயர் (Name) *</label>
+          <input type="text" id="lpName" placeholder="உங்கள் பெயர்" required>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field">
+            <label for="lpDob">பிறந்த தேதி (DOB) *</label>
+            <input type="text" id="lpDob" placeholder="DD/MM/YYYY" required>
+          </div>
+          <div class="form-field">
+            <label for="lpTob">பிறந்த நேரம் (TOB) *</label>
+            <input type="text" id="lpTob" placeholder="HH:MM (24h)" required>
+          </div>
+        </div>
+
+        <div class="form-field" style="position: relative;">
+          <label for="lpPob">பிறந்த ஊர் / நகரம் (Place) *</label>
+          <input type="text" id="lpPob" placeholder="நகரத்தை தட்டச்சு செய்க (எ.கா. Chennai)" required>
+          <div id="leftCityDropdown" class="city-dropdown hidden"></div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field">
+            <label for="lpLat">அட்சரேகை (Lat)</label>
+            <input type="number" step="0.0001" id="lpLat" placeholder="13.0827" value="13.0827">
+          </div>
+          <div class="form-field">
+            <label for="lpLon">தீர்க்கரேகை (Lon)</label>
+            <input type="number" step="0.0001" id="lpLon" placeholder="80.2707" value="80.2707">
+          </div>
+        </div>
+
+        <div class="form-field">
+          <label for="lpAyan">அயனாம்சம் (Ayanamsa)</label>
+          <select id="lpAyan">
+            <option value="lahiri" selected>லஹிரி அயனாம்சம் (Lahiri - Standard)</option>
+            <option value="kp">KP அயனாம்சம் (KP Krishnamurti)</option>
+          </select>
+        </div>
+
+        <div class="left-btn-group">
+          <button type="button" id="leftCalcBtn" class="btn-calc">
+            🪐 ஜாதகம் கணக்கிடுக
+          </button>
+          <button type="button" id="leftResetBtn" class="btn-reset">
+            🔄 மீட்டமைக்க
+          </button>
+        </div>
+      </form>
+
+      <!-- Quick Tips Card -->
+      <div class="quick-tips-card">
+        <h4>💡 குறிப்பு:</h4>
+        <p>நீங்கள் இடதுபுறம் விவரங்களை நிரப்பி நேரடியாக கணக்கிடலாம், அல்லது நடுவிலுள்ள Chatbot-ல் குரல் / தட்டச்சு மூலமாகவும் விவரங்களை அளிக்கலாம்!</p>
+      </div>
+    </aside>
+
+    <!-- ========================================================
+         CENTER PANEL: Chatbot Screen (உரையாடல் பகுதி)
+         ======================================================== -->
+    <section class="dashboard-panel center-panel active-mobile-panel" id="chatPanel">
+      <div class="chat-container">
+        <div id="chatMessages" class="chat-messages"></div>
+
+        <!-- City autocomplete dropdown inside chat -->
+        <div id="cityDropdown" class="city-dropdown hidden"></div>
+
+        <!-- 5-Second Voice Silence Countdown Banner -->
+        <div id="voiceCountdownBanner" class="voice-countdown-banner hidden">
+          <span class="countdown-pulse">🔴</span>
+          <span id="voiceCountdownText">குரல் கேட்கப்படுகிறது... பேசுங்கள்</span>
+          <button type="button" id="voiceSendNowBtn" class="btn-voice-send-now">உடனே அனுப்பு ↵</button>
+        </div>
+
+        <!-- Chat input area -->
+        <div class="chat-input-area">
+          <button type="button" id="micBtn" class="mic-btn" title="குரல் உள்ளீடு / Voice input (ta-IN)">🎤</button>
+          <input type="text" id="userInput" placeholder="உங்கள் கேள்வியை தட்டச்சு செய்யவும் அல்லது பேசவும்..." autocomplete="off"
+            autocorrect="off" spellcheck="false">
+          <button type="button" id="sendBtn" class="send-btn">அனுப்பு</button>
+        </div>
+
+        <!-- Typing indicator -->
+        <div id="typingDots" class="typing-dots hidden">
+          <span></span><span></span><span></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================
+         RIGHT PANEL: Jadhagam Kattam & Tamil Details (ராசி கட்டம்)
+         ======================================================== -->
+    <aside class="dashboard-panel right-panel" id="kattamPanel">
+      <div class="panel-header">
+        <h2>🪐 ஜாதகக் கட்டம்</h2>
+        <span class="panel-sub">South Indian Rasi Chart</span>
+      </div>
+
+      <!-- Prominent Tamil Astrology Cards: Raasi, Natchatram, Laknam, Dasha -->
+      <div class="astrometa-grid">
+        <div class="astrometa-card lagnam-card">
+          <div class="meta-label">லக்னம் (Lagnam)</div>
+          <div class="meta-val" id="metaLaknam">--</div>
+          <div class="meta-sub" id="metaLaknamSub">பாகை விவரம்</div>
+        </div>
+
+        <div class="astrometa-card raasi-card">
+          <div class="meta-label">ராசி (Raasi)</div>
+          <div class="meta-val" id="metaRaasi">--</div>
+          <div class="meta-sub" id="metaRaasiLord">ராசி அதிபதி</div>
+        </div>
+
+        <div class="astrometa-card natchatram-card">
+          <div class="meta-label">நட்சத்திரம் (Natchatram)</div>
+          <div class="meta-val" id="metaNatchatram">--</div>
+          <div class="meta-sub" id="metaNatchatramPada">பாதம் விவரம்</div>
+        </div>
+
+        <div class="astrometa-card dasha-card">
+          <div class="meta-label">நடப்பு தசை & புக்தி (Dasha-Bhukti)</div>
+          <div class="meta-val" id="metaDasha">--</div>
+          <div class="meta-sub" id="metaDashaEnd">கால அளவு</div>
+        </div>
+      </div>
+
+      <!-- Traditional South Indian 4x4 Rasi Kattam (தென்னிந்திய முறை ராசி கட்டம்) -->
+      <div class="kattam-wrapper">
+        <div class="south-indian-chart" id="southIndianChart">
+          <!-- Row 1 -->
+          <div class="chart-cell cell-11" data-sign="11" id="cell-11">
+            <span class="cell-sign-name">மீனம்</span>
+            <div class="cell-planets" id="planets-11"></div>
+          </div>
+          <div class="chart-cell cell-0" data-sign="0" id="cell-0">
+            <span class="cell-sign-name">மேஷம்</span>
+            <div class="cell-planets" id="planets-0"></div>
+          </div>
+          <div class="chart-cell cell-1" data-sign="1" id="cell-1">
+            <span class="cell-sign-name">ரிஷபம்</span>
+            <div class="cell-planets" id="planets-1"></div>
+          </div>
+          <div class="chart-cell cell-2" data-sign="2" id="cell-2">
+            <span class="cell-sign-name">மிதுனம்</span>
+            <div class="cell-planets" id="planets-2"></div>
+          </div>
+
+          <!-- Row 2 -->
+          <div class="chart-cell cell-10" data-sign="10" id="cell-10">
+            <span class="cell-sign-name">கும்பம்</span>
+            <div class="cell-planets" id="planets-10"></div>
+          </div>
+          <!-- Center 2x2 cell -->
+          <div class="chart-cell chart-center">
+            <div class="center-content">
+              <span class="center-om">ௐ</span>
+              <span class="center-title">ராசி கட்டம்</span>
+              <span class="center-native" id="centerNativeName">ஜாதகர் குறிப்பு</span>
+            </div>
+          </div>
+          <div class="chart-cell cell-3" data-sign="3" id="cell-3">
+            <span class="cell-sign-name">கடகம்</span>
+            <div class="cell-planets" id="planets-3"></div>
+          </div>
+
+          <!-- Row 3 -->
+          <div class="chart-cell cell-9" data-sign="9" id="cell-9">
+            <span class="cell-sign-name">மகரம்</span>
+            <div class="cell-planets" id="planets-9"></div>
+          </div>
+          <div class="chart-cell cell-4" data-sign="4" id="cell-4">
+            <span class="cell-sign-name">சிம்மம்</span>
+            <div class="cell-planets" id="planets-4"></div>
+          </div>
+
+          <!-- Row 4 -->
+          <div class="chart-cell cell-8" data-sign="8" id="cell-8">
+            <span class="cell-sign-name">தனுசு</span>
+            <div class="cell-planets" id="planets-8"></div>
+          </div>
+          <div class="chart-cell cell-7" data-sign="7" id="cell-7">
+            <span class="cell-sign-name">விருச்சிகம்</span>
+            <div class="cell-planets" id="planets-7"></div>
+          </div>
+          <div class="chart-cell cell-6" data-sign="6" id="cell-6">
+            <span class="cell-sign-name">துலாம்</span>
+            <div class="cell-planets" id="planets-6"></div>
+          </div>
+          <div class="chart-cell cell-5" data-sign="5" id="cell-5">
+            <span class="cell-sign-name">கன்னி</span>
+            <div class="cell-planets" id="planets-5"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Graha Positions & Dosha Chips Summary -->
+      <div class="kattam-footer">
+        <div id="doshaBadges" class="dosha-badges-row"></div>
+
+        <!-- 27 Nakshatra Parigaram Sthalam Card -->
+        <details class="graha-details-accordion parigaram-accordion" id="parigaramAccordion" open>
+          <summary>🛕 நட்சத்திர பரிகார ஸ்தலம் & காயத்ரி மந்திரம் (Parigaram)</summary>
+          <div id="parigaramContainer" class="parigaram-card-body">
+            <p style="color: rgba(255,255,255,0.65); font-size: 0.8rem; padding: 4px 0;">
+              ஜாதகம் கணிக்கப்பட்டதும் உங்கள் நட்சத்திரத்திற்கான பரிகாரக் கோவில், காயத்ரி மந்திரம் மற்றும் வழிபாட்டு முறைகள் இங்கு தோன்றும்.
+            </p>
+          </div>
+        </details>
+
+        <details class="graha-details-accordion">
+          <summary>🪐 கிரக நிலைகள் மற்றும் பாகைகள் (Planetary Longitudes)</summary>
+          <div id="grahaDegreesTable" class="graha-table-container"></div>
+        </details>
+      </div>
+
+    </aside>
+
+  </main>
+
+  <!-- Floating booking button -->
+  <button id="floatingBookBtn" class="floating-book-btn" title="Slot பதிவு செய்யுங்கள்">
+    📅 Slot பதிவு செய்யுங்கள்
+  </button>
+
+  <!-- Booking Modal -->
+  <div id="bookingModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-overlay" id="modalOverlay"></div>
+    <div class="modal-content">
+      <button class="modal-close" id="modalClose" aria-label="Close">✕</button>
+      <h2 id="modalTitle">📅 ஜோதிட ஆலோசனை Slot பதிவு</h2>
+
+      <!-- Step 1: Booking form -->
+      <div id="bookingFormStep" class="modal-step">
+        <form id="bookingForm" novalidate>
+          <div class="form-group">
+            <label for="bName">பெயர் *</label>
+            <input type="text" id="bName" name="name" required placeholder="உங்கள் பெயர்">
+          </div>
+          <div class="form-group">
+            <label for="bPhone">தொலைபேசி *</label>
+            <input type="tel" id="bPhone" name="phone" required placeholder="+91 9XXXXXXXXX"
+              pattern="[0-9+\s\-]{10,15}">
+          </div>
+          <div class="form-group">
+            <label for="bEmail">மின்னஞ்சல்</label>
+            <input type="email" id="bEmail" name="email" placeholder="your@email.com">
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="bDob">பிறந்த தேதி</label>
+              <input type="text" id="bDob" name="dob" placeholder="DD/MM/YYYY" readonly>
+            </div>
+            <div class="form-group">
+              <label for="bTob">பிறந்த நேரம்</label>
+              <input type="text" id="bTob" name="tob" placeholder="HH:MM" readonly>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="bPob">பிறந்த இடம்</label>
+            <input type="text" id="bPob" name="pob" placeholder="நகரம்" readonly>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="bSlotDate">Slot தேதி *</label>
+              <select id="bSlotDate" name="slot_date" required></select>
+            </div>
+            <div class="form-group">
+              <label for="bSlotTime">Slot நேரம் *</label>
+              <select id="bSlotTime" name="slot_time" required>
+                <option value="">தேர்வு செய்யவும்</option>
+                <option value="13:00">1:00 PM</option>
+                <option value="13:30">1:30 PM</option>
+                <option value="14:00">2:00 PM</option>
+                <option value="14:30">2:30 PM</option>
+                <option value="15:00">3:00 PM</option>
+                <option value="15:30">3:30 PM</option>
+                <option value="16:00">4:00 PM</option>
+                <option value="16:30">4:30 PM</option>
+                <option value="17:00">5:00 PM</option>
+                <option value="17:30">5:30 PM</option>
+                <option value="18:00">6:00 PM</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="bQuestion">உங்கள் கேள்வி (விரும்பினால்)</label>
+            <textarea id="bQuestion" name="question" rows="3"
+              placeholder="திருமணம் / தொழில் / ஆரோக்யம்..."></textarea>
+          </div>
+          <div id="bookingError" class="form-error hidden"></div>
+          <button type="submit" class="btn-primary" id="bookSubmitBtn">
+            Slot பதிவு செய்யுங்கள் →
+          </button>
+        </form>
+      </div>
+
+      <!-- Step 2: Payment -->
+      <div id="paymentStep" class="modal-step hidden">
+        <div class="qr-section">
+          <h3>✅ Slot பதிவு வெற்றிகரமாக முடிந்தது!</h3>
+          <p id="bookingConfirmMsg" class="confirm-msg"></p>
+          <hr>
+          <h3>💳 UPI மூலம் கட்டணம் செலுத்துங்கள்</h3>
+          <img src="assets/qr.png" alt="UPI QR Code" class="qr-img"
+            onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22200%22><rect width=%22200%22 height=%22200%22 fill=%22%23f0f0f0%22/><text x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22 font-size=%2214%22>QR Placeholder</text></svg>'">
+          <p class="upi-id">UPI ID: <strong>astrologer@upi</strong></p>
+          <p class="upi-amount">தொகை: <strong>₹500</strong></p>
+        </div>
+
+        <div class="upload-section">
+          <h4>💳 கட்டண விவரங்கள் & Screenshot (விருப்பமே / Optional)</h4>
+          <p style="font-size: 0.8rem; color: rgba(255,255,255,0.75); margin-bottom: 0.75rem; line-height: 1.4;">
+            கட்டணம் செலுத்திய பின் UPI Ref உள்ளிடலாம் அல்லது Screenshot பதிவேற்றலாம். (Screenshot கட்டாயமில்லை / Optional).
+          </p>
+          <div class="form-group">
+            <label for="upiRef">UPI Reference Number (விரும்பினால்)</label>
+            <input type="text" id="upiRef" placeholder="UPI Ref / Transaction ID (எ.கா. 4123XXXXXXXX)">
+          </div>
+          <div class="upload-drop-zone" id="uploadDropZone">
+            <input type="file" id="screenshotInput" accept="image/jpeg,image/png,image/webp" hidden>
+            <p>📷 Screenshot தேர்வு செய்யவும் (விரும்பினால்)</p>
+            <button type="button" class="btn-secondary" id="pickFileBtn">கோப்பு தேர்வு</button>
+            <p id="selectedFileName" class="file-name"></p>
+          </div>
+          <div id="uploadError" class="form-error hidden"></div>
+          <button type="button" class="btn-primary" id="uploadBtn">
+            உறுதிப்படுத்துக ✓ (Confirm Booking)
+          </button>
+        </div>
+
+        <div id="paymentSuccessMsg" class="success-msg hidden">
+          ✅ Payment screenshot பெறப்பட்டது. நாங்கள் சரிபார்த்து உறுதிப்படுத்துவோம்.
+          <br>நன்றி! 🙏
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Hidden fields to carry chart data into booking -->
+  <input type="hidden" id="chartLat" value="13.0827">
+  <input type="hidden" id="chartLon" value="80.2707">
+  <input type="hidden" id="chartTz" value="5.5">
+
+  <!-- Astronomy library -->
+  <script src="assets/js/astronomy.min.js"></script>
+
+  <!-- KP Chart computation engine -->
+  <script src="assets/js/chart.js"></script>
+
+  <!-- Dosha analysis module -->
+  <script src="assets/js/dosha.js"></script>
+
+  <!-- Booking + payment UI -->
+  <script src="assets/js/booking.js"></script>
+
+  <!-- Main chat controller -->
+  <script src="assets/js/chat.js"></script>
+
+</body>
+
+</html>
